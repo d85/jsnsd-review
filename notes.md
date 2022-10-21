@@ -235,3 +235,48 @@ module.exports = router
 ## Streaming Content with Express
 
 Express does not have native support for streams in the same way that Fastify does. However Express decorates the native HTTP `IncomingMessage` object (the response object, `res`). The `res` object is a writeable stream, so this means we can essentially roll our own streaming response. However there are some complexities around this. For instance, when one stream is piped to another it will automatically end the destination stream when the source stream has ended. But in the case of an error, we don't want to end the response, we need to instead propagate the error back into Express so it can handle it centrally according to the configuration in `app.js`.
+
+app.js snippet - articlesRouter added
+```js 
+...
+var indexRouter = require('./routes/index');
+var helloRouter = require('./routes/hello');
+var articlesRouter = require('./routes/articles')
+...
+app.use('/', indexRouter);
+app.use('/hello', helloRouter);
+app.use('/articles', articlesRouter);
+...
+
+```
+
+routes/articles.js
+```js
+const express = require('express')
+const router = express.Router()
+var hnLatestStream = require('hn-latest-stream')
+var finished = require('stream').finished
+
+router.get('/', function(req, res, next) {
+  const { amount = 10, type = 'html' } = req.query
+  
+  if (type === 'html') res.type('text/html')
+  if (type === 'json') res.type('application/json')
+
+  const stream = hnLatestStream(amount, type)
+
+  stream.pipe(res, {end: false})
+
+  finished(stream, (err) => {
+    if (err) {
+      next(err)
+      return
+    }
+    res.end()
+  })
+})
+
+module.exports = router
+```
+
+The `stream.pipe(res, {end: false})` line tells the `stream` (the Hacker News stream) to write all data it receives to the `res` object (which is also a stream). The second parameter, an object with a property named `end` prevents the pipe from performing its default behaviour of endings the destination stream `(res)` when the source stream `(stream)` has ended. This is important because without this, if there is an error in the source stream then `res` will be ended before our server can send an appropriate error response.
