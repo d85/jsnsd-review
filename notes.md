@@ -125,3 +125,113 @@ npm i -g express-generator@4
 ```sh
 express --hbs express-web-server
 ```
+
+app.js
+```js
+var createError = require('http-errors');
+var express = require('express');
+var path = require('path');
+var cookieParser = require('cookie-parser');
+var logger = require('morgan');
+
+var indexRouter = require('./routes/index');
+var helloRouter = require('./routes/hello');
+
+var app = express();
+
+// view engine setup
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'hbs');
+
+app.use(logger('dev'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+if (process.env.NODE_ENV !== 'production') {
+  app.use(express.static(path.join(__dirname, 'public')));
+}
+
+app.use('/', indexRouter);
+app.use('/hello', helloRouter);
+
+// catch 404 and forward to error handler
+app.use(function(req, res, next) {
+  next(createError(404));
+});
+
+// error handler
+app.use(function(err, req, res, next) {
+  // set locals, only providing error in development
+  res.locals.message = err.message;
+  res.locals.error = req.app.get('env') === 'development' ? err : {};
+
+  // render the error page
+  res.status(err.status || 500);
+  res.render('error');
+});
+
+module.exports = app;
+```
+
+views/layout.hbs
+```html
+<html>
+  <head>
+    <style>
+     body { background: #333; margin: 1.25rem }
+     h1 { color: #EEE; font-family: sans-serif }
+     a { color: yellow; font-size: 2rem; font-family: sans-serif }
+    </style>
+  </head>
+  <body>
+    {{{ body }}}
+  </body>
+</html>
+```
+
+views/index.hbs
+```html
+<a href='/hello'>Hello</a><br>
+<a href='/hello?greeting=Ahoy'>Ahoy</a>
+```
+
+views/hello.hbs
+```html
+<h1>{{ greeting }} World</h1>
+```
+
+views/error.hbs
+```html
+<h1>{{message}}</h1>
+<h2>{{error.status}}</h2>
+<pre>{{error.stack}}</pre>
+```
+
+routes/index.js
+```js
+var express = require('express');
+var router = express.Router();
+
+router.get('/', function(req, res, next) {
+  res.render('index');
+});
+
+module.exports = router;
+```
+
+routes/hello.js
+```js
+var express = require('express')
+var router = express.Router()
+
+router.get('/', function(req, res, next) {
+  var greeting = 'greeting' in req.query ? req.query.greeting : 'Hello'
+  res.render('hello', { greeting: greeting })
+})
+
+module.exports = router
+```
+
+## Streaming Content with Express
+
+Express does not have native support for streams in the same way that Fastify does. However Express decorates the native HTTP `IncomingMessage` object (the response object, `res`). The `res` object is a writeable stream, so this means we can essentially roll our own streaming response. However there are some complexities around this. For instance, when one stream is piped to another it will automatically end the destination stream when the source stream has ended. But in the case of an error, we don't want to end the response, we need to instead propagate the error back into Express so it can handle it centrally according to the configuration in `app.js`.
