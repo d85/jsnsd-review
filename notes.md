@@ -1,5 +1,11 @@
 # JSNSD Review
 
+Kill app running on port 3000
+
+```sh
+fuser -k 3000/tcp
+```
+
 ### Execute node command from terminal
 
 ```sh
