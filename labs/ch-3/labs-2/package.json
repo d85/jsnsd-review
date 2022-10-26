@@ -1,6 +1,9 @@
 {
   "name": "labs-2",
   "scripts": {
-    "start": "echo \"TODO: SET THE START SCRIPT\" && exit 1"
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
   }
 }
