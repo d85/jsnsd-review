@@ -290,3 +290,26 @@ The `stream.pipe(res, {end: false})` line tells the `stream` (the Hacker News st
 We use the `finished` function from the core `stream` module to determine when our Hacker News stream (`stream`) has ended. Using `finished` saves a lot of code, otherwise we would have to listen to the `end`, `close` and `error` events.
 
 If there was an error in `stream` the callback will be passed an error object (the `err` parameter).
+
+## Lab note
+
+### 4.1
+
+Use express generator to generate an app with name app
+
+```sh
+express --view=hbs app
+```
+
+Or, in the current directory
+```sh
+express --view=hbs .
+```
+
+### Note
+
+```js
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+```
+This is only used for POST and PUT requests to handle JSON and form data respectively. Extended relates to whether it needs to handle nested objects. 
