@@ -312,4 +312,5 @@ express --view=hbs .
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 ```
-This is only used for POST and PUT requests to handle JSON and form data respectively. Extended relates to whether it needs to handle nested objects. 
+This is only used for POST and PUT requests to handle JSON and form data respectively. Extended relates to whether it needs to handle nested objects.
+
