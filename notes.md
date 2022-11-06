@@ -493,3 +493,163 @@ output
 ```
 500
 ```
+
+# Ch06 - Implementing POST, PUT and DELETE with Express
+
+model.js
+```js
+'use strict'
+
+module.exports = {
+  bicycle: bicycleModel()
+}
+
+function bicycleModel () {
+  const db = {
+    1: { brand: 'Veloretti', color: 'green' },
+    2: { brand: 'Batavus', color: 'yellow' }
+  }
+
+  return {
+    create, read, update, del, uid
+  }
+
+  function uid () {
+    return Object.keys(db)
+      .sort((a, b) => a - b)
+      .map(Number)
+      .filter((n) => !isNaN(n))
+      .pop() + 1 + ''
+  }
+
+  function create (id, data, cb) {
+    if (db.hasOwnProperty(id)) {
+      const err = Error('resource exists')
+      setImmediate(() => cb(err))
+      return
+    }
+    db[id] = data
+    setImmediate(() => cb(null, id))
+  }
+
+  function read (id, cb) {
+    if (!(db.hasOwnProperty(id))) {
+      const err = Error('not found')
+      setImmediate(() => cb(err))
+      return
+    }
+    setImmediate(() => cb(null, db[id]))
+  }
+
+  function update (id, data, cb) {
+    if (!(db.hasOwnProperty(id))) {
+      const err = Error('not found')
+      setImmediate(() => cb(err))
+      return
+    }
+    db[id] = data
+    setImmediate(() => cb())
+  }
+
+  function del (id, cb) {
+    if (!(db.hasOwnProperty(id))) {
+      const err = Error('not found')
+      setImmediate(() => cb(err))
+      return
+    }
+    delete db[id]
+    setImmediate(() => cb())
+  }
+}
+```
+
+routes/bicylcle/index.js
+```js
+var express = require('express');
+var router = express.Router();
+var model = require('../model');
+
+router.get('/:id', function(req, res, next) {
+  model.bicycle.read(req.params.id, (err, result) => {
+    if (err) {
+      if (err.message === 'not found') next();
+      else next(err);
+    } else {
+      res.send(result);
+    }
+  });
+});
+
+router.post('/', function(req, res, next) {
+  var id = model.bicycle.uid();
+  model.bicycle.create(id, req.body.data, (err) => {
+    if (err) next(err);
+    else res.status(201).send({ id });
+  });
+});
+
+router.post('/:id/update', function(req, res, next) {
+  model.bicycle.update(req.params.id, req.body.data, (err) => {
+    if (err) {
+      if (err.message === 'not found') next();
+      else next(err);
+    } else {
+      res.status(204).send();
+    }
+  });
+});
+
+router.put('/:id', function(req, res, next) {
+  model.bicycle.create(req.params.id, req.body.data, (err) => {
+    if (err) {
+      if (err.message === 'resource exists') {
+        model.bicycle.update(req.params.id, req.body.data, (err) => {
+          if (err) next(err);
+          else res.status(204).send();
+        });
+      } else {
+        next(err);
+      }
+    } else {
+      res.status(201).send({});
+    }
+  });
+});
+
+router.delete('/:id', function(req, res, next) {
+  model.bicycle.del(req.params.id, (err) => {
+    if (err) {
+      if (err.message === 'not found') next();
+      else next(err);
+    } else {
+      res.status(204).send();
+    }
+  });
+});
+
+module.exports = router;
+```
+
+Each of the routes implement exactly the same logic as the routes in our Fastify service but we use callback-style instead of async/await. The reason for this is two-fold. Firstly, it reflects the code styles used in legacy services - and there are many legacy Express services in the wild. Secondly, **using async/await with Express is recommended against.** Express was built before async/await syntax was part of the JavaScript language and as a result it does not always behave as expected.
+
+For instance, the following will cause a memory leaks:
+```js
+//: WARNING NEVER DO THIS IN EXPRESS
+router.get('/foo', async function(req, res, next) {
+  throw Error('what happens?');
+  res.send('hi'); // <- this is never reached
+});
+```
+
+This is because Express does not handle the promise rejection that results from throwing in an async function, and therefore the request does not finish (for a while) and continues to hold state. This would be a source of performance, debugging and maintenance issues. Worse, the same scenario can occur without explicitly throwing:
+
+```js
+//: WARNING NEVER DO THIS IN EXPRESS
+router.get('/foo', async function(req, res, next) {
+  res.dend('hi');
+});
+```
+
+In this case a typo has been made, res.send is intended but it's written as res.dend. Since that method doesn't exist, this will cause an error to be thrown (because undefined is not a function) and will lead to the same scenario. There are ways around this, for instance monkey-patching the framework, or using try/catch blocks in every single route handler and then passing caught errors to the next callback. However both of these approaches can (and likely will) lead to footgun scenarios, technical debt and different forms of bugs - because they rely on hacks and/or depend on understood and enforced conventions across many people.
+
+**In short, use callback-based API's with Express.**
