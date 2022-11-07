@@ -653,3 +653,104 @@ router.get('/foo', async function(req, res, next) {
 In this case a typo has been made, res.send is intended but it's written as res.dend. Since that method doesn't exist, this will cause an error to be thrown (because undefined is not a function) and will lead to the same scenario. There are ways around this, for instance monkey-patching the framework, or using try/catch blocks in every single route handler and then passing caught errors to the next callback. However both of these approaches can (and likely will) lead to footgun scenarios, technical debt and different forms of bugs - because they rely on hacks and/or depend on understood and enforced conventions across many people.
 
 **In short, use callback-based API's with Express.**
+
+Making a POST request
+```sh
+node -e "http.request('http://localhost:3000/bicycle', { method: 'post', headers: {'content-type': 'application/json'}}, (res) => res.setEncoding('utf8').once('data', console.log.bind(null, res.statusCode))).end(JSON.stringify({data: {brand: 'Gazelle', color: 'red'}}))"
+```
+
+Output
+```js
+201 {"id":"3"}
+```
+
+Checking the entry was added
+```sh
+node -e "http.get('http://localhost:3000/bicycle/3', (res) => res.setEncoding('utf8').once('data', console.log))"
+```
+
+Output
+```js
+{"brand":"Gazelle","color":"red"}
+```
+
+Updating the entry with the same id
+```sh
+node -e "http.request('http://localhost:3000/bicycle/3/update', { method: 'post', headers: {'content-type': 'application/json'}}, (res) => console.log(res.statusCode)).end(JSON.stringify({data: {brand: 'Ampler', color: 'blue'}}))"
+```
+
+Output
+
+```js
+204
+```
+
+Check the update worked
+```sh
+node -e "http.get('http://localhost:3000/bicycle/3', (res) => res.setEncoding('utf8').once('data', console.log))"
+```
+
+Output
+```js
+{"brand":"Ampler","color":"blue"}
+```
+
+Create a new entry with PUT
+```sh
+node -e "http.request('http://localhost:3000/bicycle/99', { method: 'put', headers: {'content-type': 'application/json'}}, (res) => console.log(res.statusCode)).end(JSON.stringify({data: {brand: 'VanMoof', color: 'black'}}))"
+```
+
+Output
+```
+201
+```
+
+Check it created it
+```sh
+node -e "http.get('http://localhost:3000/bicycle/99', (res) => res.setEncoding('utf8').once('data', console.log))"
+```
+
+Output
+```
+201
+```
+
+Hit the route with different data to update it
+```sh
+node -e "http.request('http://localhost:3000/bicycle/99', { method: 'put', headers: {'content-type': 'application/json'}}, (res) => console.log(res.statusCode)).end(JSON.stringify({data: {brand: 'Bianchi', color: 'pink'}}))"
+```
+
+Output
+```
+204
+```
+
+Check it updated
+```sh
+node -e "http.get('http://localhost:3000/bicycle/99', (res) => res.setEncoding('utf8').once('data', console.log))"
+```
+
+Output
+```
+{"brand":"Bianchi","color":"pink"}
+```
+
+Check DELETE route
+```sh
+node -e "http.request('http://localhost:3000/bicycle/99', { method: 'delete', headers: {'content-type': 'application/json'}}, (res) => console.log(res.statusCode)).end()"
+```
+
+Output
+```
+204
+```
+
+Check it's deleted
+```sh
+node -e "http.get('http://localhost:3000/bicycle/99', (res) => res.setEncoding('utf8').once('data', console.log))"
+```
+
+Output
+```js
+{"type":"error","status":404,"message":"Not Found","stack":"NotFoundError: Not Found ... }
+```
