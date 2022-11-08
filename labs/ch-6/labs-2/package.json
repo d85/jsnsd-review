@@ -1,12 +1,20 @@
 {
-  "name": "labs-1",
+  "name": "labs-2",
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "start": "echo \"Error: start script not specified\" && exit 1",
+    "start": "node ./bin/www",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "debug": "^4.3.4",
+    "express": "^4.18.2",
+    "hbs": "^4.2.0",
+    "http-errors": "^2.0.0",
+    "morgan": "^1.10.0"
+  }
 }
