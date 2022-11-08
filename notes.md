@@ -754,3 +754,31 @@ Output
 ```js
 {"type":"error","status":404,"message":"Not Found","stack":"NotFoundError: Not Found ... }
 ```
+
+# Ch07 - Consuming and Aggregating Services
+
+If there was a Bicyle service and a Boat serive that another service needs to talk to, it could determin the base URL for each of these services like so:
+
+```js
+const { BICYCLE_SERVICE, BOAT_SERVICE } = process.env
+
+const http = require('http')
+http.get(`${BICYCLE_SERVICE}/some/route`, (res) => {
+  /* do something */
+})
+```
+
+At deployment time, the operational infrastructure could then set the environment variables to the appropriate URLs. During local development the environment variables would be configured as `http://localhost:[port]`.
+
+An alternative is injecting the service port instead of a full URL:
+
+```js
+const { BICYCLE_SERVICE_PORT, BOAT_SERVICE_PORT } = process.env
+const http = require('http')
+const bicycleSrv = `http://localhost:${BICYCLE_SERVICE_PORT}`
+http.get(`${bicycleSrv}/some/route`, (res) => {
+  /* do something */
+})
+```
+
+We will use port number injection via environment variables.
