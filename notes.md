@@ -782,3 +782,32 @@ http.get(`${bicycleSrv}/some/route`, (res) => {
 ```
 
 We will use port number injection via environment variables.
+
+Start services
+```sh
+PORT=4000 node bicycle-service.js
+```
+
+```sh
+PORT=5000 node brand-service.js
+```
+
+Hit each service
+
+URL
+```
+http://localhost:4000/1
+```
+Output
+```
+{"id":1,"color":"Red"}
+```
+
+URL
+```
+http://localhost:5000/5
+```
+Output
+```
+{"id":5,"name":"Sparta"}
+```
