@@ -1,10 +1,14 @@
 {
   "name": "labs-1",
-  "version": "1.0.0",
+  "version": "0.0.0",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "echo \"Error: start script not specified\" && exit 1"
+    "start": "node ./bin/www"
   },
-  "keywords": [],
-  "license": "UNLICENSED"
+  "dependencies": {
+    "debug": "~2.6.9",
+    "express": "~4.16.1",
+    "http-errors": "~1.6.3",
+    "morgan": "~1.9.1"
+  }
 }
