@@ -982,3 +982,88 @@ module.exports = router
 ```
 
 One final thing: what should we do if one of both of the services are down? In our case we should probably just respond with a 500 error.
+
+## ch-07 labs-1
+
+start each of the dependant services
+```sh
+PORT=3333 node boat-service
+```
+```sh
+PORT=3334 node brand-service
+```
+
+start the consuming service
+```sh
+PORT=3000 BOAT_SERVICE_PORT=3333 BRAND_SERVICE_PORT=3334 npm start
+```
+
+Check the boat service endpoint, e.g.
+```sh
+http://localhost:3333/1
+```
+
+The Boat service responds in the following format
+```js
+{
+  "id": Number,
+  "brand": Number,
+  "color": String
+}
+```
+
+Check the brand service endpoint, e.g.
+```sh
+http://localhost:3334/3
+```
+
+The Brand service responds in the following format
+```js
+{
+  "id": Number,
+  "name": String
+}
+```
+
+## ch-07 lab-1 solution
+```js
+'use strict'
+var createError = require('http-errors');
+var express = require('express')
+var router = express.Router()
+const got = require('got')
+
+const {
+  BOAT_SERVICE_PORT = 3333, BRAND_SERVICE_PORT = 3334
+} = process.env
+
+const boatSrv = `http://localhost:${BOAT_SERVICE_PORT}`
+const brandSrv = `http://localhost:${BRAND_SERVICE_PORT}`
+
+router.get('/:id', function (req, res, next) {
+  const { id } = req.params
+  const combinedResult = {}
+
+  got(`${boatSrv}/${id}`, { timeout: 1250, retry: 0 }).json()
+    .then((boat) => {
+      combinedResult.id = boat.id
+      combinedResult.color = boat.color
+      return got(`${brandSrv}/${boat.brand}`, { timeout: 1250, retry: 0 }).json()
+    })
+    .then((brand) => {
+      combinedResult.brand = brand.name
+      res.send(combinedResult)
+    })
+    .catch((err) => {
+      if (err.response) {
+        const { statusCode } = err.response
+        if (statusCode === 404) next()
+        else if (statusCode === 400) next(createError(400))
+      } else {
+        next(createError(500))
+      }
+    })
+});
+
+module.exports = router
+```
