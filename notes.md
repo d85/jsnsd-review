@@ -1067,3 +1067,21 @@ router.get('/:id', function (req, res, next) {
 
 module.exports = router
 ```
+
+# Ch08 - Proxying HTTP Requests
+
+An HTTP Proxy is a server that forwards HTTP requests to backend services and then forwards reponses to clients. As the system scales, at a certain point, the need for proxying tends to become inevitable.
+
+Generally speaking, proxying should be done with a specialized configurable piece of infrastructure, such as NGINX, Kong or proprietary cloud gateway services.
+
+However, sometimes there are complex requirements for a proxy that may be better met with a Node.js proxying service. Other times the requirements may be so simple (like proxying a single route) that it just makes sense to use what's already available instead of investing in something else.
+
+## Goals of this chapter
+- Proxy HTTP requests for a single route
+- Modify data during proxying
+- Create a full proxying server
+
+There may be some circumstances where we need to send data from another service via our service. In these cases, we could actually use an HTTP request library like `got` as explored in the prior chapter. However, using a proxying library is a viable alternative that provides a more configuration-based approach vs the procedural approach of using a request library.
+
+Let's start by defining a route that will take a querystring parameter called `url` and then respond from whatever URL is specified in that parameter.
+
