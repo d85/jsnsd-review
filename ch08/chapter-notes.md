@@ -177,7 +177,7 @@ Now let's update the `app.js` file to look as follows:
 'use strict'
 
 const proxy = require('@fastify/http-proxy')
-const sensible = require('fastify-sensible')
+const sensible = require('@fastify/sensible')
 module.exports = async function (fastify, opts) {
   fastify.register(sensible)
   fastify.register(proxy, {
