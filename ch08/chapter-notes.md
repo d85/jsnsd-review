@@ -132,20 +132,20 @@ In the previous section we supplied the desired endpoint using a `url` query str
 
 However, instead of using a querystring parameter we can map every path (and indeed every HTTP method) made to our proxy service straight to the upstream service.
 
-Let's initialize a new Fastify project and install `fastify-http-proxy`:
+Let's initialize a new Fastify project and install `@fastify/http-proxy`:
 
 ```sh
 node -e "fs.mkdirSync('my-proxy-fastify')"
 cd my-proxy-fastify
 npm init fastify
-npm install fastify-http-proxy
+npm install @fastify/http-proxy
 ```
 
 Now let's make the `app.js` look as follows:
 
 ```js
 'use strict'
-const proxy = require('fastify-http-proxy')
+const proxy = require('@fastify/http-proxy')
 module.exports = async function (fastify, opts) {
   fastify.register(proxy, {
     upstream: 'htt‌ps://news.ycombinator.com/'
@@ -157,7 +157,7 @@ That's all we need to do. Let's start the server with `npm run dev` and navigate
 
 If we click any of the links along the top, for instance the `new` link, this will navigate to `http://localhost:3000/newest` which will then display the current Hacker News page of the newest articles.
 
-The `fastify-http-proxy` library uses the `fastify-reply-from` plugin under the hood with a handler that takes all the requests, figures out the path and then passes them to `reply.from`.
+The `@fastify/http-proxy` library uses the `fastify-reply-from` plugin under the hood with a handler that takes all the requests, figures out the path and then passes them to `reply.from`.
 
 Generally speaking the `upstream` option would be set to some internal service that is not accessible publicly and typically it's more likely that it would be a data service of some kind (for instance, providing JSON responses).
 
@@ -165,7 +165,7 @@ As mentioned in the introduction to this chapter, typically proxying should be d
 
 However for unique scenarios this simple example could be extended in ways that may be impossible or at least impractical with such ready-made solutions.
 
-For instance, imagine a nascent authentication approach which isn't yet supported in larger projects. We can use the `preHandler` option supported by `fastify-http-proxy` to implement custom authentication logic.
+For instance, imagine a nascent authentication approach which isn't yet supported in larger projects. We can use the `preHandler` option supported by `@fastify/http-proxy` to implement custom authentication logic.
 
 Let's install `fastify-sensible`:
 
@@ -176,7 +176,7 @@ Now let's update the `app.js` file to look as follows:
 ```js
 'use strict'
 
-const proxy = require('fastify-http-proxy')
+const proxy = require('@fastify/http-proxy')
 const sensible = require('fastify-sensible')
 module.exports = async function (fastify, opts) {
   fastify.register(sensible)
