@@ -125,3 +125,74 @@ node -e "http.createServer((_, res) => (res.setHeader('Content-Type', 'text/plai
 ```
 
 Now, if we navigate to `http://localhost:3000/?url=http://localhost:5000` in a browser the output should be `HELLO WORLD`.
+
+# Single-Origin, Multi-Route Proxy
+
+In the previous section we supplied the desired endpoint using a `url` query string parameter. If we had set the `base` option, we could instead support a `path` querystring parameter that can be used to request a specific path from the upstream service as specified by the `base` option.
+
+However, instead of using a querystring parameter we can map every path (and indeed every HTTP method) made to our proxy service straight to the upstream service.
+
+Let's initialize a new Fastify project and install `fastify-http-proxy`:
+
+```sh
+node -e "fs.mkdirSync('my-proxy-fastify')"
+cd my-proxy-fastify
+npm init fastify
+npm install fastify-http-proxy
+```
+
+Now let's make the `app.js` look as follows:
+
+```js
+'use strict'
+const proxy = require('fastify-http-proxy')
+module.exports = async function (fastify, opts) {
+  fastify.register(proxy, {
+    upstream: 'htt‌ps://news.ycombinator.com/'
+  })
+}
+```
+
+That's all we need to do. Let's start the server with `npm run dev` and navigate to `http://localhost:3000` in the browser.
+
+If we click any of the links along the top, for instance the `new` link, this will navigate to `http://localhost:3000/newest` which will then display the current Hacker News page of the newest articles.
+
+The `fastify-http-proxy` library uses the `fastify-reply-from` plugin under the hood with a handler that takes all the requests, figures out the path and then passes them to `reply.from`.
+
+Generally speaking the `upstream` option would be set to some internal service that is not accessible publicly and typically it's more likely that it would be a data service of some kind (for instance, providing JSON responses).
+
+As mentioned in the introduction to this chapter, typically proxying should be done by out-of-the-box gateway infrastructure software.
+
+However for unique scenarios this simple example could be extended in ways that may be impossible or at least impractical with such ready-made solutions.
+
+For instance, imagine a nascent authentication approach which isn't yet supported in larger projects. We can use the `preHandler` option supported by `fastify-http-proxy` to implement custom authentication logic.
+
+Let's install `fastify-sensible`:
+
+`npm install fastify-sensible`
+
+Now let's update the `app.js` file to look as follows:
+
+```js
+'use strict'
+
+const proxy = require('fastify-http-proxy')
+const sensible = require('fastify-sensible')
+module.exports = async function (fastify, opts) {
+  fastify.register(sensible)
+  fastify.register(proxy, {
+    upstream: 'https://news.ycombinator.com/',
+    async preHandler(request, reply) {
+      if (request.query.token !== 'abc') {
+        throw fastify.httpErrors.unauthorized()
+      }
+    }
+  })
+}
+```
+
+Now if we make sure our server is running (`npm run dev`) and navigate to `http://localhost:3000/` we should see `{"statusCode":401,"error":"Unauthorized","message":"Unauthorized"}`.
+
+If we navigate to `http://localhost:3000/?token=abc`, we'll have access to the upstream site again.
+
+The `preHandler` function we supplied to the options object can be an async function (and thus return a promise). If that promise rejects then the response is intercepted. In our case we throw the `fastify.httpErrors.unauthorized` error as supplied by `fastify-sensible` to create a 401 Unauthorized HTTP response.
