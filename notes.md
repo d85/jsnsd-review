@@ -1085,3 +1085,104 @@ There may be some circumstances where we need to send data from another service 
 
 Let's start by defining a route that will take a querystring parameter called `url` and then respond from whatever URL is specified in that parameter.
 
+# Ch09 Web Security: Handling User Input
+
+One of the most important things to consider when building public-facing services is that any user can theoretically be a malicious user. Even if it's just one user out of millions, the implications of a malicious user who is able to exploit insecure code can be significant. 
+
+Therefore it is of paramount importance to always ensure that any external inputs to a service are sanitized in ways that prevent potential attackers from gaining any control of backend systems or from borrowing the authority of a site to exploit other users.
+
+The JSNSD exam tests for basic security knowledge. While there is an entire course-worth of scenarios from SQL-injection to CSRF and XSS attacks to timing and side-channel attacks that could be explored, this chapter will deal primarily with input validation on service routes and on lesser-known gotchas of receiving user input.
+
+# Objectives
+By the end of this chapter, you should be able to:
+
+Understand parameter pollution and how to avoid it.
+Learn about route validation in Express.
+
+## Avoiding Parameter Pollution Attacks
+
+The parameter pollution exploits a bug that's often created by developers when handling query string parameters. Even when we know about the potential for the bug, it can still be easy to forget. The main aim of such an attack is to cause a service to either crash or slow down by generating an exception in the service.
+
+In cases where a crash occurs, it will be because of an unhandled exception. In cases where a slow down occurs it can be caused by generating an exception that's generically handled and the error handling overhead (for instance, stack generation for a new error object on every request) and then sending many requests to the server. Both of these are forms of Denial of Service attacks, we cover mitigating such attacks (in a limited fashion) in the next chapter.
+
+Preventing the attack from occurring in the first place requires an awareness of how query-string parsing works.
+
+A query-string is the first occurrence of the part of a URL starting with a question mark. For instance, given a URL: ht‌tp://example.com/?name=bob the query string is `?name=bob`. All mainstream Node.js frameworks (and the node core `querystring` module) parse `?name=bob` into an object with a property of `name` and a value of `'bob'`, like so: `{name: 'bob'}`. However query-strings allow for an array-like concept. The following is a legitimate query string: `?name=bob&name=dave`. In all popular Node frameworks (and Node core `querystring`) the parsed query-string will result in an object with a `name` key with a value of `['bob', 'dave']`, like so: `{name: ['bob', 'dave']}`.
+
+We can demonstrate this by running the following commands:
+
+```sh
+node -p "querystring.parse('name=bob')"
+```
+
+This will output: 
+```js
+[Object: null prototype] { name: 'bob' }
+```
+
+Whereas the following command:
+
+```sh
+node -p "querystring.parse('name=bob&name=dave')"
+```
+
+Will result in 
+```js
+[Object: null prototype] { name: [ 'bob', 'dave' ] }
+```
+as an output.
+
+Express also supports a square-bracket denotation syntax in query-strings, so `?name[]=bob` will result in an object: `{name: ['bob']}`. Neither Fastify nor the Node core native `querystring` module support this syntax.
+
+Either way, if we don't consider that a query-string value can be parsed to either a string or an array, it can be all too easy to use `String.prototype` methods on a parsed query object which will result in an error when that value is an array.
+
+Consider an Express route that looks as follows:
+
+```js
+router.get('/', (req, res, next) => {
+  someAsynchronousOperation(() => {
+    if (!req.query.name) {
+      var err = new Error('Bad Request')
+      err.status = 400
+      next(err)
+      return
+    }
+    var parts = req.query.name.split(' ');
+    var last = parts.pop();
+    var first = parts.shift();
+    res.send({first: first, last: last});
+  })
+});
+```
+
+The `someAsynchronousOperation` function doesn't exist, it's conceptually representing an asynchronous operation. It could be a database lookup, or a `setTimeout` or any kind of asynchronous work.
+
+Given a query-string `?name=David Mark Clements` the response would be {"first": "David", "last": "Clements"}. However the following query-string will cause the entire service to crash: `?name=David Mark Clements&name=kaboom`. This is because `req.query` will be an object with a `name` property containing an array, like so: `{name: ['David Mark Clements', 'kaboom']}`. So in this case, `req.query.name.split` will not exist, arrays do not have a split function. This will cause an Uncaught TypeError which will not be handled. Express has no way of catching unhandled exceptions that occur in asynchronous operations. This is why async/await syntax with Fastify is recommended, because even when errors occur in a Fastify route handler it will propagate as a promise rejection into Fastify core and result in a 500 Server Error instead of crashing the service.
+
+The only way to avoid a parameter pollution attack is to ensure that any code written for query-string parameters can run without error against both strings and arrays. This can be as simple as a `typeof` check for string or conversely using `Array.isArray` method to determine if the value is an array and then handling the value accordingly. There's no right answer as to how to handle string value versus array values from parses query-strings, it all depends on context. However one solution to the above buggy-code is the following:
+
+```js
+function convert (name) {
+  var parts = name.split(' ');
+  var last = parts.pop();
+  var first = parts.shift();
+  return {first: first, last: last};
+}
+router.get('/', (req, res, next) => {
+  someAsynchronousOperation(() => {
+    if (!req.query.name) {
+      var err = new Error('Bad Request')
+      err.status = 400
+      next(err)
+      return
+    }
+    if (Array.isArray(req.query.name)) {
+      res.send(req.query.name.map(convert));
+    } else {
+      res.send(convert(req.query.name));
+    }
+  });
+});
+```
+
+This solution responds to the cases where query-string values are arrays by responding with an array where each value is converted. However, again, the way to solve this issue is entirely context dependent.
