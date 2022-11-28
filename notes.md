@@ -1451,7 +1451,7 @@ function validateBody (o) {
   };
 }
 ```
-`
+
 Similar to `validateData`, the `validateBody` function is for assessing whether `req.body` meets the validation constraints. That is, is `req.body` an object, does it have a `data` property and is that data property an object. It also uses the `validateData` function to validate the `data` property of the input object (`o`). If either the body object or data object is invalid, the function will return `false`, otherwise it returns an object with a `data` property whose value is the sanitized data object. This provides a deeply sanitized form of the body. Now onto the next function:
 
 ```js
