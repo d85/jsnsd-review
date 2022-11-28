@@ -1610,3 +1610,54 @@ node -e "http.get('http://localhost:3000/bicycle/4', (res) => res.setEncoding('u
 This will output `{"brand":"Gazelle","color":"red"}`, the extra key has not been stored because the `validateBody` function in the POST request created a new object with only the `brand` and `color` keys, effectively stripping extra from the payload.
 
 As mentioned in the prior section, rigorous testing of services is highly recommended. Not only that but it's this author's experience that many deployed Express services used in production by organizations around the world have no tests, or have inadequate tests. Testing is not covered in this training nor is it part of the JavaScript Services Developer Certification. It is instead a key part of the JavaScript Application Developer Certification and associated training. However, the `supertest` library is an excellent tool for testing Express services, see htt‌ps://github.com/visionmedia/supertest for more information.
+
+# Ch10 Web Security: Mitigating Attacks
+
+The most prevalent example of disruption-focussed attacks is via a Denial of Service (DOS) attack. In the case of a Distributed Denial of Service (DDOS) attack this would mean automating a large amount of machines to each make a large amount of requests to a single service. Other Denial of Service (DOS) attacks may involve much fewer machines that make requests to an endpoint that has been identified as vulnerable to a payload (for instance one that decompresses to a much larger size). This topic in itself is extensive, and should mostly be handled by the infrastructure around a deployed Node.js service. In this short final chapter we will briefly explore quick fixes to such scenarios when, for whatever reason, a Node.js service needs to handle an active attack.
+
+# Objectives
+By the end of this chapter, you should be able to:
+
+- Understand how to block an attackers IP in Express
+
+# Block an Attackers' IP Address with Express
+As we discussed in the introduction, an attack can come from multiple machines, which tends to mean it can come from multiple IPs. However, once we know how to block one IP in a service we can block as many IPs as we like. In this section, we'll look at blocking a single attacking IP address in an Express service. To re-emphasize, this is not something that should normally be necessary, it's only a last-resort scenario in cases where deployment infrastructure is not handling these scenarios externally to our service.
+
+Recall that Express is essentially a middleware pattern on top of Node's core `http` (and `https`) modules. The `http` (and `https`) modules use the `net` module for TCP functionality. Each `req` and `res` object that are provided to the request listener function (which is passed to `http.createServer`) have a `socket` property which is the underlying TCP socket for the request and response. So `req.socket.remoteAddress` will contain the IP address of the client making a request to an Express service.
+
+Since Express passes the `req` and `res` objects to each piece of registered middleware in the order that they are registered, in order to block an attacking IP, all we need to do is register a middleware function before other middleware and check `req.socket.remoteAddress`.
+
+Let's say we want to block the IP 127.0.0.1 (this is the localhost IP, so it's useful for testing purposes) in a typical Express application, that is one that was generated with the `express` CLI tool from `express-generator`. We would register the following before other middleware:
+
+```js
+app.use(function (req, res, next) {
+  if (req.socket.remoteAddress === '127.0.0.1') {
+    const err = new Error('Forbidden');
+    err.status = 403;
+    next(err);
+    return;
+  }
+  next();
+});
+```
+
+If `req.socket.remoteAddress` was to match our target IP address, we generate a new error and set the `status` property of that error to 403 (the status code for Forbidden), then call `next`, passing it the error and then use `return` to exit the function early. If `req.socket.remoteAddress` does not match the IP address we simply call `next` to let Express execute the middleware registered after this one.
+
+Remember that a typical Express application has the following error handler middleware at the end of all registered middleware:
+
+```js
+// error handler
+app.use(function(err, req, res, next) {
+  // set locals, only providing error in development
+  res.locals.message = err.message;
+  res.locals.error = req.app.get('env') === 'development' ? err : {};
+
+  // render the error page
+  res.status(err.status || 500);
+  res.render('error');
+});
+```
+
+So by setting the `status` property of the `err` object we create in our IP blocking middleware, we cause the error handling middleware to call `res.status(403)` which results in a 403 Forbidden response from the service. When dealing with an adversarial opponent, it's sometimes better to misinform than to give valid feedback. For example, using a 404 Not Found status could be better than a 403 Forbidden status since a 404 is misleading. However, it's unlikely to fool many.
+
+Registering the IP blocking middleware as early as possible makes sense since we don't want an attacker to be able to access any systems. However, it can also be argued that we want to register it after logging middleware. Either way the IP is blocked, but in the latter case the act of it being blocked is visible in the logs.
