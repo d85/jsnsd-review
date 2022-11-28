@@ -1186,3 +1186,427 @@ router.get('/', (req, res, next) => {
 ```
 
 This solution responds to the cases where query-string values are arrays by responding with an array where each value is converted. However, again, the way to solve this issue is entirely context dependent.
+
+# Route Validation with Express
+
+Express does not offer any validation primitives or abstractions as a core part of the framework. There are no particular validation practices recommended in the frameworks' documentation. As a result, approaches to Express validation in the wild vary significantly. While validation libraries do exist - for an example see `htt‌ps://express-validator.github.io/docs/` - there is no standard approach. It is even possible to use JSONSchema with Express via various middleware offerings but this is rarely seen in practice; possibly because the implementations available cause significant performance overhead. As a result the most common approach to validation in Express is to develop custom logic for the service as needed. This isn't exactly recommended, but when dealing with legacy services it's useful to understand this aspect of real-world legacy Express development.
+
+So in this section we'll be looking at hand-rolled validation rules for the Express service that was created in Chapter 6.
+
+In Chapter 6 an Express service was created in a `my-express-service` folder. The `routes/bicycle.js` file from that folder looked as follows:
+
+```js
+var express = require('express');
+var router = express.Router();
+var model = require('../model');
+
+router.get('/:id', function(req, res, next) {
+  model.bicycle.read(req.params.id, (err, result) => {
+    if (err) {
+      if (err.message === 'not found') next();
+      else next(err);
+    } else {
+      res.send(result);
+    }
+  });
+});
+
+router.post('/', function(req, res, next) {
+  var id = model.bicycle.uid();
+  model.bicycle.create(id, req.body.data, (err) => {
+    if (err) next(err);
+    else res.status(201).send({ id });
+  });
+});
+
+router.post('/:id/update', function(req, res, next) {
+  model.bicycle.update(req.params.id, req.body.data, (err) => {
+    if (err) {
+      if (err.message === 'not found') next();
+      else next(err);
+    } else {
+      res.status(204).send();
+    }
+  });
+});
+
+router.put('/:id', function(req, res, next) {
+  model.bicycle.create(req.params.id, req.body.data, (err) => {
+    if (err) {
+      if (err.message === 'resource exists') {
+        model.bicycle.update(req.params.id, req.body.data, (err) => {
+          if (err) next(err);
+          else res.status(204).send();
+        });
+      } else {
+        next(err);
+      }
+    } else {
+      res.status(201).send({});
+    }
+  });
+});
+
+router.delete('/:id', function(req, res, next) {
+  model.bicycle.del(req.params.id, (err) => {
+    if (err) {
+      if (err.message === 'not found') next();
+      else next(err);
+    } else {
+      res.status(204).send();
+    }
+  });
+});
+
+module.exports = router;
+```
+
+Rather than applying validation to this file piece by piece, we'll look at the full file with validation rules that match those as applied to the Fastify service in the prior section and then we'll discuss various aspects of it. The following is the routes/bicycle.js with validation and sanitization applied:
+
+```js
+var express = require('express');
+var router = express.Router();
+var model = require('../model');
+
+function hasOwnProperty (o, p) {
+  return Object.prototype.hasOwnProperty.call(o, p);
+}
+
+function validateData (o) {
+  var valid = o !== null && typeof o === 'object';
+  valid = valid && hasOwnProperty(o, 'brand');
+  valid = valid && hasOwnProperty(o, 'color');
+  valid = valid && typeof o.brand === 'string';
+  valid = valid && typeof o.color === 'string';
+  return valid && {
+    brand: o.brand,
+    color: o.color
+  };
+}
+
+function validateBody (o) {
+  var valid = o !== null && typeof o === 'object';
+  valid = valid && hasOwnProperty(o, 'data');
+  valid = valid && o.data !== null && typeof o.data === 'object';
+  var data = valid && validateData(o.data);
+  return valid && data && {
+    data: data
+  };
+}
+
+function isIdValid (n) {
+  n = Number(n)
+  var MAX_SAFE = Math.pow(2, 53) - 1
+  return isFinite(n) && Math.floor(n) === n && Math.abs(n) <= MAX_SAFE
+}
+
+function isParamsValid (o) {
+  var valid = o !== null && typeof o === 'object';
+  valid = valid && hasOwnProperty(o, 'id');
+  valid = valid && isIdValid(o.id);
+  return valid;
+}
+
+function badRequest () {
+  const err = new Error('Bad Request');
+  err.status = 400;
+  return err;
+}
+
+router.get('/:id', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    model.bicycle.read(req.params.id, (err, result) => {
+      if (err) {
+        if (err.message === 'not found') next();
+        else next(err);
+      } else {
+        var sanitizedResult = validateData(result);
+        if (sanitizedResult) {
+          res.send(sanitizedResult);
+        } else {
+          next(new Error('Server Error'));
+        }
+      }
+    });
+  } else {
+    next(badRequest());
+  }
+});
+
+router.post('/', function (req, res, next) {
+  var id = model.bicycle.uid();
+  var body = validateBody(req.body);
+  if (body) {
+    model.bicycle.create(id, body.data, (err) => {
+      if (err) {
+        next(err);
+      } else {
+        if (isIdValid(id)) res.status(201).send({ id });
+        else next(new Error('Server Error'));
+      }
+    });
+  } else {
+    next(badRequest());
+  }
+});
+
+router.post('/:id/update', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    var body = validateBody(req.body);
+    if (body) {
+      model.bicycle.update(req.params.id, body.data, (err) => {
+        if (err) {
+          if (err.message === 'not found') next();
+          else next(err);
+        } else {
+          res.status(204).send();
+        }
+      });
+    } else {
+      next(badRequest());
+    }
+  } else {
+    next(badRequest());
+  }
+});
+
+router.put('/:id', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    var body = validateBody(body);
+    if (body) {
+      model.bicycle.create(req.params.id, body.data, (err) => {
+        if (err) {
+          if (err.message === 'resource exists') {
+            model.bicycle.update(req.params.id, body.data, (err) => {
+              if (err) next(err);
+              else res.status(204).send();
+            });
+          } else {
+            next(err);
+          }
+        } else {
+          res.status(201).send({});
+        }
+      });
+    } else {
+      next(badRequest());
+    }
+  } else {
+    next(badRequest());
+  }
+});
+
+router.delete('/:id', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    model.bicycle.del(req.params.id, (err) => {
+      if (err) {
+        if (err.message === 'not found') next();
+        else next(err);
+      } else {
+        res.status(204).send();
+      }
+    });
+  } else {
+    next(badRequest());
+  }
+});
+
+module.exports = router;
+```
+
+The code has been written using an older style, as is common (and in fact, recommended) in Express applications. The validation functions have been written in the `routes/bicycle.js` as they are quite specific to the route, but typically validation code would reside in a `lib/validation.js` file or be refactored into some custom middleware and placed into a `middleware/validation` folder. Let's take a look at the validation functions and utility functions at the top of `routes/bicycle.js`:
+
+```js
+function hasOwnProperty (o, p) {
+  return Object.prototype.hasOwnProperty.call(o, p);
+}
+```
+
+The `hasOwnProperty` is a small utility function that will be found in various forms across all sorts of JavaScript projects, both frontend and backend. It is possible to call `o.hasOwnProperty('foo')` where `o` is an object and `foo` is an expected property on the object. However since the method name can be overwritten, it's safer to apply the `Object.prototypeo.hasOwnProperty` function (from which objects inherit), to an object using `call` (which sets o to the this context of the `Object.prototype.hasOwnProperty` function) and then wrap that in a utility function. We could use `p in o` to check if an object has a property but this will also check for prototype properties, for example `'toString' in {}` evaluates to true even though it's an empty object. Now let's look at the next function:
+
+```js
+function validateData (o) {
+  var valid = o !== null && typeof o === 'object';
+  valid = valid && hasOwnProperty(o, 'brand');
+  valid = valid && hasOwnProperty(o, 'color');
+  valid = valid && typeof o.brand === 'string';
+  valid = valid && typeof o.color === 'string';
+  return valid && {
+    brand: o.brand,
+    color: o.color
+  };
+}
+```
+
+The `validateData` function is for assessing whether `req.body.data` meets the validation constraints. That is: is `req.body.data` an object? Does it have a brand and color property and are the values of both of these properties strings? If not, the function will return false; otherwise, it returns an object with those two values. This provides a sanitized form of the input object, effectively stripping any extra properties.
+
+```js
+function validateBody (o) {
+  var valid = o !== null && typeof o === 'object';
+  valid = valid && hasOwnProperty(o, 'data');
+  valid = valid && o.data !== null && typeof o.data === 'object';
+  var data = valid && validateData(o.data);
+  return valid && data && {
+    data: data
+  };
+}
+```
+`
+Similar to `validateData`, the `validateBody` function is for assessing whether `req.body` meets the validation constraints. That is, is `req.body` an object, does it have a `data` property and is that data property an object. It also uses the `validateData` function to validate the `data` property of the input object (`o`). If either the body object or data object is invalid, the function will return `false`, otherwise it returns an object with a `data` property whose value is the sanitized data object. This provides a deeply sanitized form of the body. Now onto the next function:
+
+```js
+function isIdValid (n) {
+  n = Number(n)
+  var MAX_SAFE = Math.pow(2, 53) - 1
+  return isFinite(n) && Math.floor(n) === n && Math.abs(n) <= MAX_SAFE
+}
+```
+
+The `isIdValid` function checks that the input is an integer, thus enforcing that IDs are always integers. In modern JavaScript it could be written as `const isIdValid = (n) => Number.isSafeInteger(Number(n))` but this code is written in a legacy style more appropriate to the majority of Express services in production. Let's take a look at the next function:
+
+```js
+function isParamsValid (o) {
+  var valid = o !== null && typeof o === 'object';
+  valid = valid && hasOwnProperty(o, 'id');
+  valid = valid && isIdValid(o.id);
+  return valid;
+}
+```
+
+The `isParamsValid` function checks that params is an object (it should always be an object, but in case of accidental use on something other than `req.params` at least this would fail fast). Then it checks for the presence of the id property, and checks the value of the `id` property with `isIdValid`. Let's take a look at the final utility function at the top of `routes/bicycle.js`:
+
+```js
+function badRequest () {
+  const err = new Error('Bad Request');
+  err.status = 400;
+  return err;
+}
+```
+
+This is a small convenience wrapper to create errors with a `status` property set to 400, to handle all the cases where validation fails in the routes.
+
+It should be evident that we've recreated a hand-rolled function-based equivalent of the schemas we created in the previous chapter. Now let's see how these functions are used in each route. Let's start with the GET route:
+
+```js
+router.get('/:id', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    model.bicycle.read(req.params.id, (err, result) => {
+      if (err) {
+        if (err.message === 'not found') next();
+        else next(err);
+      } else {
+        var sanitizedResult = validateData(result);
+        if (sanitizedResult) {
+          res.send(sanitizedResult);
+        } else {
+          next(new Error('Server Error'));
+        }
+      }
+    });
+  } else {
+    next(badRequest());
+  }
+});
+```
+
+The first conditional check is whether `req.params` is valid. If it is, we proceed to call `model.bicycle.read`. If not we call `next(badRequest())` at the bottom of the route handler function.
+
+We also pass the `result` object provided to the callback passed to `model.bicycle.read` to check that the `result` matches our data validation constraints and strip any extra properties from it. This is providing the same functionality as the `schema.response` with Fastify in the prior section. If the `sanitizedResult` variable is not `false` then it's the sanitized object, which is passed to `res.send` to complete the response. Otherwise the `next` function is called with new `Error('Server Error')`. This will propagate to the error handling middleware in the `app.js` file, which will automatically set the response status to 500 as it does for any error object without a status property. This means if the data fetched from the model does not meet validation constraints, a 500 server error will occur. Let's take a look at the first POST route with validation applied:
+
+```js
+router.post('/', function (req, res, next) {
+  var id = model.bicycle.uid();
+  var body = validateBody(req.body);
+  if (body) {
+    model.bicycle.create(id, body.data, (err) => {
+      if (err) {
+        next(err);
+      } else {
+        if (isIdValid(id)) res.status(201).send({ id });
+        else next(new Error('Server Error'));
+      }
+    });
+  } else {
+    next(badRequest());
+  }
+});
+```
+
+We assign a `body` variable to `validateBody(req.body)`. If body is false, then we call `next(badRequest())` at the end of the route handler function. Otherwise we pass `body.data` to the `model.bicycle.create` function. Before sending an object holding the ID of the newly created record, we pass the `id` variable to `isIdValid`, we send the ID in an object as the response or otherwise propagate an Error that will result in a 500 error. We could actually check the ID earlier (before calling `model.bicycle.create`) however for understanding purposes the behavior of this route intentionally maps as close as possible to the behavior of the equivalent route in the prior section: Fastify doesn't validate responses until the response is about to be sent.
+
+Let's take a look at the second POST route:
+
+```js
+router.post('/:id/update', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    var body = validateBody(req.body);
+    if (body) {
+      model.bicycle.update(req.params.id, body.data, (err) => {
+        if (err) {
+          if (err.message === 'not found') next();
+          else next(err);
+        } else {
+          res.status(204).send();
+        }
+      });
+    } else {
+      next(badRequest());
+    }
+  } else {
+    next(badRequest());
+  }
+});
+```
+
+This mixes validation elements from both the GET route and the POST route. We check that the params are valid with isParamsValid, if not we create an error with `badRequest` and pass it to `next` in the last `else` branch of the route handler function. We validate and sanitize `req.body` with `validateBody`, if `body` is `false` we create an error with `badRequest` and pass it to `next` in the penultimate `else` branch of the route handler function. Otherwise we pass `body.data` to `model.bicycle.update`. We can skip the PUT route as the validation for the PUT route is exactly the same as for this second POST route. Let's take a look at the final DELETE route:
+
+```js
+router.delete('/:id', function (req, res, next) {
+  if (isParamsValid(req.params)) {
+    model.bicycle.del(req.params.id, (err) => {
+      if (err) {
+        if (err.message === 'not found') next();
+        else next(err);
+      } else {
+        res.status(204).send();
+      }
+    });
+  } else {
+    next(badRequest());
+  }
+});
+```
+
+Here all we needed to do was validate the params, if they're invalid then we call `next(badRequest())` at the bottom of the route handler function.
+
+We can start our server with the updated `routes/bicycle.js` file (npm start) and then in another terminal check run some commands to check that it works as intended.
+
+The following POST request should work successfully:
+
+```sh
+node -e "http.request('http://localhost:3000/bicycle', { method: 'post', headers: {'content-type': 'application/json'}}, (res) => res.setEncoding('utf8').once('data', console.log.bind(null, res.statusCode))).end(JSON.stringify({data: {brand: 'Gazelle', color: 'red'}}))"
+```
+
+The output of the command would be `201 {"id": "3"}`. The payload for this request was `{"data":{"brand":"Gazelle","color":"red"}}`. If we change the payload to `{"data":{"brand":"Gazelle","colors":"red"}}` we should get a 400 Bad Request response. The following command tries to make a POST request with this invalid payload:
+
+```sh
+node -e "http.request('http://localhost:3000/bicycle', { method: 'post', headers: {'content-type': 'application/json'}}, (res) => res.setEncoding('utf8').once('data', console.log.bind(null, res.statusCode))).end(JSON.stringify({data: {brand: 'Gazelle', colors: 'red'}}))"
+```
+
+This will result in the following output: `400 {"type":"error","status":400,"message":"Bad Request","stack": "..."}` where the actual stack is replaced with "...". Unlike the Fastify implementation with schemas no message has been generated as to why it was a 400 Bad Request response.
+
+If we include extra properties in the payload, they will be stripped. We can try sending the payload `{"data":{"brand":"Gazelle","color":"red", "extra": "will be stripped"}}` with the following command:
+
+```sh
+node -e "http.request('http://localhost:3000/bicycle', { method: 'post', headers: {'content-type': 'application/json'}}, (res) => res.setEncoding('utf8').once('data', console.log.bind(null, res.statusCode))).end(JSON.stringify({data: {brand: 'Gazelle', color: 'red', extra: 'will be stripped'}}))"
+```
+
+Running this command will result in `201 {"id":"4"}` as output, the record was successfully created. However if we make a GET request to http://localhost:3000/bicycle/4 we will see that the `extra` key in the payload was not stored. The following command can make the GET request:
+
+```sh
+node -e "http.get('http://localhost:3000/bicycle/4', (res) => res.setEncoding('utf8').once('data', console.log))"
+```
+
+This will output `{"brand":"Gazelle","color":"red"}`, the extra key has not been stored because the `validateBody` function in the POST request created a new object with only the `brand` and `color` keys, effectively stripping extra from the payload.
+
+As mentioned in the prior section, rigorous testing of services is highly recommended. Not only that but it's this author's experience that many deployed Express services used in production by organizations around the world have no tests, or have inadequate tests. Testing is not covered in this training nor is it part of the JavaScript Services Developer Certification. It is instead a key part of the JavaScript Application Developer Certification and associated training. However, the `supertest` library is an excellent tool for testing Express services, see htt‌ps://github.com/visionmedia/supertest for more information.
